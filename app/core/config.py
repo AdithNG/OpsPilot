@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4.1-mini"
     embedding_model: str = "text-embedding-3-small"
     database_url: str = "postgresql://postgres:postgres@db:5432/opspilot"
+    storage_backend: str = "memory"
 
     model_config = SettingsConfigDict(
         env_file=".env",
