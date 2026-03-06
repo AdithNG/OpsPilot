@@ -90,6 +90,12 @@ class PostgresDocumentRepository:
                 )
                 return [Citation(source_id=document_id, snippet=content[:240]) for document_id, content in cursor.fetchall()]
 
+    def count(self) -> int:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM documents")
+                return cursor.fetchone()[0]
+
     def _tokenize(self, text: str) -> list[str]:
         normalized = "".join(character.lower() if character.isalnum() else " " for character in text)
         return [term for term in normalized.split() if len(term) > 2]
@@ -139,6 +145,12 @@ class PostgresApprovalRepository:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1 FROM approvals WHERE request_id = %s", (request_id,))
                 return cursor.fetchone() is not None
+
+    def count(self) -> int:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM approvals")
+                return cursor.fetchone()[0]
 
     def _connect(self):
         from psycopg import connect
@@ -199,6 +211,12 @@ class PostgresConversationRepository:
                     (conversation_id,),
                 )
                 return [ConversationMessage(role=role, content=content) for role, content in cursor.fetchall()]
+
+    def count(self) -> int:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(DISTINCT conversation_id) FROM conversations")
+                return cursor.fetchone()[0]
 
     def _connect(self):
         from psycopg import connect
@@ -280,6 +298,36 @@ class PostgresTraceRepository:
                     steps=steps.splitlines() if steps else [],
                     requires_approval=requires_approval,
                 )
+
+    def count(self) -> int:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM workflow_traces")
+                return cursor.fetchone()[0]
+
+    def list_recent(self, limit: int = 5) -> list[WorkflowTrace]:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT trace_id, conversation_id, intent, steps, requires_approval
+                    FROM workflow_traces
+                    ORDER BY trace_id DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cursor.fetchall()
+                return [
+                    WorkflowTrace(
+                        trace_id=trace_id,
+                        conversation_id=conversation_id,
+                        intent=intent,
+                        steps=steps.splitlines() if steps else [],
+                        requires_approval=requires_approval,
+                    )
+                    for trace_id, conversation_id, intent, steps, requires_approval in rows
+                ]
 
     def _connect(self):
         from psycopg import connect

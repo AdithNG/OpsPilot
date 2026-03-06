@@ -65,6 +65,10 @@ class MemoryDocumentRepository:
         scored.sort(key=lambda item: item[0], reverse=True)
         return [Citation(source_id=chunk.document_id, snippet=chunk.content[:240]) for _, chunk in scored[:limit]]
 
+    def count(self) -> int:
+        with self._lock:
+            return len(self._chunks)
+
     def _chunk_content(self, content: str) -> Iterable[str]:
         return [content[index : index + self.chunk_size] for index in range(0, len(content), self.chunk_size)] or [content]
 
@@ -95,6 +99,10 @@ class MemoryApprovalRepository:
         with self._lock:
             return request_id in self._actions
 
+    def count(self) -> int:
+        with self._lock:
+            return len(self._actions)
+
 
 class MemoryConversationRepository:
     def __init__(self) -> None:
@@ -121,15 +129,21 @@ class MemoryConversationRepository:
         with self._lock:
             return list(self._conversations.get(conversation_id, []))
 
+    def count(self) -> int:
+        with self._lock:
+            return len(self._conversations)
+
 
 class MemoryTraceRepository:
     def __init__(self) -> None:
         self._lock = Lock()
         self._traces: dict[str, WorkflowTrace] = {}
+        self._order: list[str] = []
 
     def reset(self) -> None:
         with self._lock:
             self._traces.clear()
+            self._order.clear()
 
     def create(
         self,
@@ -147,8 +161,18 @@ class MemoryTraceRepository:
         )
         with self._lock:
             self._traces[trace.trace_id] = trace
+            self._order.append(trace.trace_id)
         return trace
 
     def get(self, trace_id: str) -> WorkflowTrace | None:
         with self._lock:
             return self._traces.get(trace_id)
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._traces)
+
+    def list_recent(self, limit: int = 5) -> list[WorkflowTrace]:
+        with self._lock:
+            trace_ids = list(reversed(self._order[-limit:]))
+            return [self._traces[trace_id] for trace_id in trace_ids]
