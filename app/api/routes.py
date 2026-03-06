@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.api.v1.endpoints import approvals, chat, conversations, documents, evals, health, observability, tools, traces
+from app.core.security import enforce_api_protection
 
-api_router = APIRouter()
+api_router = APIRouter(dependencies=[Depends(enforce_api_protection)])
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(documents.router, prefix="/documents", tags=["documents"])

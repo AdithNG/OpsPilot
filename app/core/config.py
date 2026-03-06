@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     api_prefix: str = "/api/v1"
     environment: str = Field(default="development")
+    api_key: str | None = None
+    rate_limit_requests: int = 60
+    rate_limit_window_seconds: int = 60
     llm_provider: str = "local"
     openai_model: str = "gpt-4.1-mini"
     embedding_provider: str = "local"
