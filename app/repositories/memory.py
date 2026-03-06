@@ -5,6 +5,7 @@ from threading import Lock
 from typing import Iterable
 from uuid import uuid4
 
+from app.schemas.approvals import ApprovalRecord
 from app.schemas.chat import Citation, ConversationMessage, WorkflowTrace
 
 
@@ -83,25 +84,55 @@ class MemoryDocumentRepository:
 class MemoryApprovalRepository:
     def __init__(self) -> None:
         self._lock = Lock()
-        self._actions: dict[str, str] = {}
+        self._records: dict[str, ApprovalRecord] = {}
+        self._order: list[str] = []
 
     def reset(self) -> None:
         with self._lock:
-            self._actions.clear()
+            self._records.clear()
+            self._order.clear()
 
     def create(self, action: str) -> str:
         with self._lock:
-            request_id = f"approval-{len(self._actions) + 1}"
-            self._actions[request_id] = action
+            request_id = f"approval-{len(self._records) + 1}"
+            self._records[request_id] = ApprovalRecord(
+                request_id=request_id,
+                action=action,
+                status="pending",
+            )
+            self._order.append(request_id)
             return request_id
 
     def exists(self, request_id: str) -> bool:
         with self._lock:
-            return request_id in self._actions
+            return request_id in self._records
+
+    def get(self, request_id: str) -> ApprovalRecord | None:
+        with self._lock:
+            return self._records.get(request_id)
+
+    def list(self) -> list[ApprovalRecord]:
+        with self._lock:
+            return [self._records[request_id] for request_id in reversed(self._order)]
+
+    def decide(self, request_id: str, approved: bool, reviewer: str, note: str | None) -> ApprovalRecord | None:
+        with self._lock:
+            record = self._records.get(request_id)
+            if record is None:
+                return None
+            updated = ApprovalRecord(
+                request_id=record.request_id,
+                action=record.action,
+                status="approved" if approved else "rejected",
+                reviewer=reviewer,
+                note=note,
+            )
+            self._records[request_id] = updated
+            return updated
 
     def count(self) -> int:
         with self._lock:
-            return len(self._actions)
+            return len(self._records)
 
 
 class MemoryConversationRepository:

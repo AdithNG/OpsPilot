@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import closing
 from uuid import uuid4
 
+from app.schemas.approvals import ApprovalRecord
 from app.schemas.chat import Citation, ConversationMessage, WorkflowTrace
 
 
@@ -117,7 +118,10 @@ class PostgresApprovalRepository:
                     """
                     CREATE TABLE IF NOT EXISTS approvals (
                         request_id TEXT PRIMARY KEY,
-                        action TEXT NOT NULL
+                        action TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        reviewer TEXT NULL,
+                        note TEXT NULL
                     )
                     """
                 )
@@ -134,8 +138,8 @@ class PostgresApprovalRepository:
         with closing(self._connect()) as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO approvals (request_id, action) VALUES (%s, %s)",
-                    (request_id, action),
+                    "INSERT INTO approvals (request_id, action, status, reviewer, note) VALUES (%s, %s, %s, %s, %s)",
+                    (request_id, action, "pending", None, None),
                 )
                 connection.commit()
         return request_id
@@ -145,6 +149,70 @@ class PostgresApprovalRepository:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1 FROM approvals WHERE request_id = %s", (request_id,))
                 return cursor.fetchone() is not None
+
+    def get(self, request_id: str) -> ApprovalRecord | None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT request_id, action, status, reviewer, note FROM approvals WHERE request_id = %s",
+                    (request_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                return ApprovalRecord(
+                    request_id=row[0],
+                    action=row[1],
+                    status=row[2],
+                    reviewer=row[3],
+                    note=row[4],
+                )
+
+    def list(self) -> list[ApprovalRecord]:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT request_id, action, status, reviewer, note
+                    FROM approvals
+                    ORDER BY request_id DESC
+                    """
+                )
+                return [
+                    ApprovalRecord(
+                        request_id=request_id,
+                        action=action,
+                        status=status,
+                        reviewer=reviewer,
+                        note=note,
+                    )
+                    for request_id, action, status, reviewer, note in cursor.fetchall()
+                ]
+
+    def decide(self, request_id: str, approved: bool, reviewer: str, note: str | None) -> ApprovalRecord | None:
+        status = "approved" if approved else "rejected"
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE approvals
+                    SET status = %s, reviewer = %s, note = %s
+                    WHERE request_id = %s
+                    RETURNING request_id, action, status, reviewer, note
+                    """,
+                    (status, reviewer, note, request_id),
+                )
+                row = cursor.fetchone()
+                connection.commit()
+                if row is None:
+                    return None
+                return ApprovalRecord(
+                    request_id=row[0],
+                    action=row[1],
+                    status=row[2],
+                    reviewer=row[3],
+                    note=row[4],
+                )
 
     def count(self) -> int:
         with closing(self._connect()) as connection:
