@@ -19,6 +19,28 @@ uvicorn app.main:app --reload
 
 Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/) for the demo UI.
 
+## Frontend
+
+A real Next.js + TypeScript frontend now lives in `frontend/` and talks to the focused GraphQL API.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+By default it calls `http://127.0.0.1:8010/api/graphql`. Override that with:
+
+```bash
+NEXT_PUBLIC_GRAPHQL_URL=http://127.0.0.1:8000/api/graphql
+```
+
+If API key protection is enabled on the backend, also set:
+
+```bash
+NEXT_PUBLIC_API_KEY=your-key
+```
+
 ## Run with Docker
 
 ```bash
