@@ -55,6 +55,8 @@ export type DashboardData = {
     requestId: string;
     action: string;
     status: string;
+    reviewer: string | null;
+    note: string | null;
   }>;
   ingestionJobs: Array<{
     jobId: string;
@@ -95,6 +97,8 @@ export const DASHBOARD_QUERY = `
       requestId
       action
       status
+      reviewer
+      note
     }
     ingestionJobs(limit: 5) {
       jobId
@@ -126,11 +130,31 @@ export type ChatMutationData = {
     citations: Array<{
       sourceId: string;
       title: string | null;
+      sourceUrl: string | null;
       snippet: string;
+      score: number | null;
     }>;
     trace: {
       traceId: string;
       steps: string[];
+    } | null;
+    incidentSummary: {
+      title: string;
+      impact: string;
+      severity: string;
+      suspectedCause: string;
+      nextSteps: Array<{
+        owner: string;
+        action: string;
+        priority: string;
+      }>;
+    } | null;
+    ticketDraft: {
+      title: string;
+      summary: string;
+      impact: string;
+      reproductionSteps: string[];
+      acceptanceCriteria: string[];
     } | null;
     toolExecutions: Array<{
       executionId: string;
@@ -150,17 +174,101 @@ export const CHAT_MUTATION = `
       citations {
         sourceId
         title
+        sourceUrl
         snippet
+        score
       }
       trace {
         traceId
         steps
+      }
+      incidentSummary {
+        title
+        impact
+        severity
+        suspectedCause
+        nextSteps {
+          owner
+          action
+          priority
+        }
+      }
+      ticketDraft {
+        title
+        summary
+        impact
+        reproductionSteps
+        acceptanceCriteria
       }
       toolExecutions {
         executionId
         toolName
         status
       }
+    }
+  }
+`;
+
+export type IngestDocumentMutationData = {
+  ingestDocument: {
+    jobId: string;
+    jobType: string;
+    status: string;
+    documentId: string | null;
+    chunksCreated: number;
+  };
+};
+
+export const INGEST_DOCUMENT_MUTATION = `
+  mutation IngestDocument($input: DocumentIngestInput!) {
+    ingestDocument(input: $input) {
+      jobId
+      jobType
+      status
+      documentId
+      chunksCreated
+    }
+  }
+`;
+
+export type IngestGithubMutationData = {
+  ingestGithubArtifact: {
+    jobId: string;
+    jobType: string;
+    status: string;
+    sourceKind: string;
+    documentId: string | null;
+  };
+};
+
+export const INGEST_GITHUB_MUTATION = `
+  mutation IngestGithubArtifact($input: GitHubIngestInput!) {
+    ingestGithubArtifact(input: $input) {
+      jobId
+      jobType
+      status
+      sourceKind
+      documentId
+    }
+  }
+`;
+
+export type ApprovalDecisionMutationData = {
+  submitApprovalDecision: {
+    requestId: string;
+    status: string;
+    reviewer: string | null;
+    note: string | null;
+  };
+};
+
+export const APPROVAL_DECISION_MUTATION = `
+  mutation SubmitApprovalDecision($requestId: String!, $decision: ApprovalDecisionInput!) {
+    submitApprovalDecision(requestId: $requestId, decision: $decision) {
+      requestId
+      status
+      reviewer
+      note
     }
   }
 `;
