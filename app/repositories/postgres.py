@@ -97,7 +97,7 @@ class PostgresDocumentRepository:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT document_id, content
+                    SELECT document_id, title, content, source_url
                     FROM documents
                     WHERE (
                         CASE
@@ -113,26 +113,34 @@ class PostgresDocumentRepository:
                 if query_embedding:
                     cursor.execute(
                         """
-                        SELECT document_id, content
-                        FROM documents
-                        WHERE embedding IS NOT NULL
-                        ORDER BY embedding <=> %s::vector
-                        LIMIT %s
+                    SELECT document_id, title, content, source_url
+                    FROM documents
+                    WHERE embedding IS NOT NULL
+                    ORDER BY embedding <=> %s::vector
+                    LIMIT %s
                         """,
                         (vector_literal, limit),
                     )
                     vector_rows = cursor.fetchall()
                 else:
                     vector_rows = []
-                combined: list[tuple[str, str]] = []
+                combined: list[tuple[str, str, str, str | None]] = []
                 seen: set[str] = set()
-                for document_id, content in [*vector_rows, *lexical_rows]:
+                for document_id, title, content, source_url in [*vector_rows, *lexical_rows]:
                     key = f"{document_id}:{content}"
                     if key in seen:
                         continue
                     seen.add(key)
-                    combined.append((document_id, content))
-                return [Citation(source_id=document_id, snippet=content[:240]) for document_id, content in combined[:limit]]
+                    combined.append((document_id, title, content, source_url))
+                return [
+                    Citation(
+                        source_id=document_id,
+                        title=title,
+                        source_url=source_url,
+                        snippet=content[:240],
+                    )
+                    for document_id, title, content, source_url in combined[:limit]
+                ]
 
     def count(self) -> int:
         with closing(self._connect()) as connection:

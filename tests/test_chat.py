@@ -16,6 +16,8 @@ def test_chat_returns_citation_for_runbook_question() -> None:
     assert payload["conversation_id"].startswith("conv-")
     assert payload["intent"] == "question"
     assert payload["citations"]
+    assert payload["citations"][0]["title"]
+    assert payload["citations"][0]["source_url"]
     assert payload["requires_approval"] is False
     assert payload["trace"]["steps"] == ["classify", "retrieve", "respond_question"]
 
@@ -40,6 +42,34 @@ def test_chat_returns_ingested_document_context() -> None:
     assert payload["citations"]
     assert "consumer lag" in payload["message"].lower()
     assert payload["trace"]["conversation_id"] == payload["conversation_id"]
+
+
+def test_chat_reranks_more_relevant_document_first() -> None:
+    client.post(
+        "/api/v1/documents/ingest",
+        json={
+            "title": "General Deploy Notes",
+            "content": "Deployment changes may require health checks after release.",
+        },
+    )
+    client.post(
+        "/api/v1/documents/ingest",
+        json={
+            "title": "Rollback Procedure",
+            "content": "Rollback procedure for login service: pause deploys, restore prior version, verify login health checks.",
+        },
+    )
+
+    response = client.post(
+        "/api/v1/chat",
+        json={"message": "What is the rollback procedure for the login service?"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["citations"]
+    assert payload["citations"][0]["title"] == "Rollback Procedure"
+    assert payload["citations"][0]["score"] >= payload["citations"][-1]["score"]
 
 
 def test_chat_requires_approval_for_write_like_actions() -> None:

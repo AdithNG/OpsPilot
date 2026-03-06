@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     embedding_provider: str = "local"
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 64
+    retrieval_limit: int = 3
+    retrieval_candidate_limit: int = 8
     database_url: str = "postgresql://postgres:postgres@db:5432/opspilot"
     storage_backend: str = "memory"
 

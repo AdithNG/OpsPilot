@@ -87,7 +87,16 @@ class MemoryDocumentRepository:
                 if score > 0:
                     scored.append((score, chunk))
         scored.sort(key=lambda item: item[0], reverse=True)
-        return [Citation(source_id=chunk.document_id, snippet=chunk.content[:240]) for _, chunk in scored[:limit]]
+        return [
+            Citation(
+                source_id=chunk.document_id,
+                title=chunk.title,
+                source_url=chunk.source_url,
+                snippet=chunk.content[:240],
+                score=score,
+            )
+            for score, chunk in scored[:limit]
+        ]
 
     def count(self) -> int:
         with self._lock:

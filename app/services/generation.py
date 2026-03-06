@@ -70,4 +70,11 @@ class GenerationService:
     def _context_from_citations(self, citations: list[Citation]) -> str:
         if not citations:
             return "No relevant context found."
-        return "\n".join(f"{citation.source_id}: {citation.snippet}" for citation in citations)
+        return "\n".join(
+            (
+                f"{citation.title or citation.source_id}"
+                f" ({citation.source_url or 'internal source'}): "
+                f"{citation.snippet}"
+            )
+            for citation in citations
+        )

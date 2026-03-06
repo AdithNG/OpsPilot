@@ -7,7 +7,10 @@ from app.schemas.tools import ToolExecution
 
 class Citation(BaseModel):
     source_id: str
+    title: str | None = None
+    source_url: str | None = None
     snippet: str
+    score: float | None = None
 
 
 class ApprovalRequest(BaseModel):
