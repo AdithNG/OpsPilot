@@ -1,16 +1,16 @@
-import math
-from uuid import uuid4
-
 from app.schemas.documents import DocumentIngestRequest, DocumentIngestResponse
+from app.services.document_store import document_store
 
 
 class IngestionService:
-    chunk_size = 500
-
     async def ingest(self, request: DocumentIngestRequest) -> DocumentIngestResponse:
-        chunks_created = max(1, math.ceil(len(request.content) / self.chunk_size))
+        document_id, chunks_created = document_store.ingest(
+            title=request.title,
+            content=request.content,
+            source_url=str(request.source_url) if request.source_url else None,
+        )
         return DocumentIngestResponse(
-            document_id=f"doc-{uuid4()}",
+            document_id=document_id,
             status="queued",
             chunks_created=chunks_created,
         )

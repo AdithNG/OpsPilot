@@ -4,6 +4,9 @@ _approval_store: dict[str, str] = {}
 
 
 class ApprovalService:
+    def reset(self) -> None:
+        _approval_store.clear()
+
     async def create(self, action: str) -> str:
         request_id = f"approval-{len(_approval_store) + 1}"
         _approval_store[request_id] = action
