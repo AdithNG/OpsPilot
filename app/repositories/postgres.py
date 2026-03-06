@@ -15,16 +15,19 @@ class PostgresDocumentRepository:
     def initialize(self) -> None:
         with closing(self._connect()) as connection:
             with connection.cursor() as cursor:
+                cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS documents (
                         document_id TEXT NOT NULL,
                         title TEXT NOT NULL,
                         content TEXT NOT NULL,
-                        source_url TEXT NULL
+                        source_url TEXT NULL,
+                        embedding vector(64) NULL
                     )
                     """
                 )
+                cursor.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS embedding vector(64)")
                 connection.commit()
         self.seed_defaults()
 
@@ -58,25 +61,34 @@ class PostgresDocumentRepository:
                 connection.commit()
         self.seed_defaults()
 
-    def ingest(self, title: str, content: str, source_url: str | None = None) -> tuple[str, int]:
+    def ingest(
+        self,
+        title: str,
+        content: str,
+        source_url: str | None = None,
+        embeddings: list[list[float]] | None = None,
+    ) -> tuple[str, int]:
         document_id = f"doc-{uuid4()}"
         chunks = [content[index : index + self.chunk_size] for index in range(0, len(content), self.chunk_size)] or [content]
+        if embeddings is None:
+            embeddings = [[] for _ in chunks]
         with closing(self._connect()) as connection:
             with connection.cursor() as cursor:
-                for chunk in chunks:
+                for chunk, embedding in zip(chunks, embeddings, strict=False):
                     cursor.execute(
                         """
-                        INSERT INTO documents (document_id, title, content, source_url)
-                        VALUES (%s, %s, %s, %s)
+                        INSERT INTO documents (document_id, title, content, source_url, embedding)
+                        VALUES (%s, %s, %s, %s, %s::vector)
                         """,
-                        (document_id, title, chunk, source_url),
+                        (document_id, title, chunk, source_url, self._vector_literal(embedding)),
                     )
                 connection.commit()
         return document_id, len(chunks)
 
-    def search(self, query: str, limit: int = 3) -> list[Citation]:
+    def search(self, query: str, limit: int = 3, query_embedding: list[float] | None = None) -> list[Citation]:
         query_text = " | ".join(term for term in self._tokenize(query))
-        if not query_text:
+        vector_literal = self._vector_literal(query_embedding or [])
+        if not query_text and not query_embedding:
             return []
         with closing(self._connect()) as connection:
             with connection.cursor() as cursor:
@@ -84,12 +96,40 @@ class PostgresDocumentRepository:
                     """
                     SELECT document_id, content
                     FROM documents
-                    WHERE to_tsvector('english', title || ' ' || content) @@ to_tsquery('english', %s)
+                    WHERE (
+                        CASE
+                            WHEN %s = '' THEN TRUE
+                            ELSE to_tsvector('english', title || ' ' || content) @@ to_tsquery('english', %s)
+                        END
+                    )
                     LIMIT %s
                     """,
-                    (query_text, limit),
+                    (query_text, query_text, limit),
                 )
-                return [Citation(source_id=document_id, snippet=content[:240]) for document_id, content in cursor.fetchall()]
+                lexical_rows = cursor.fetchall()
+                if query_embedding:
+                    cursor.execute(
+                        """
+                        SELECT document_id, content
+                        FROM documents
+                        WHERE embedding IS NOT NULL
+                        ORDER BY embedding <=> %s::vector
+                        LIMIT %s
+                        """,
+                        (vector_literal, limit),
+                    )
+                    vector_rows = cursor.fetchall()
+                else:
+                    vector_rows = []
+                combined: list[tuple[str, str]] = []
+                seen: set[str] = set()
+                for document_id, content in [*vector_rows, *lexical_rows]:
+                    key = f"{document_id}:{content}"
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    combined.append((document_id, content))
+                return [Citation(source_id=document_id, snippet=content[:240]) for document_id, content in combined[:limit]]
 
     def count(self) -> int:
         with closing(self._connect()) as connection:
@@ -100,6 +140,11 @@ class PostgresDocumentRepository:
     def _tokenize(self, text: str) -> list[str]:
         normalized = "".join(character.lower() if character.isalnum() else " " for character in text)
         return [term for term in normalized.split() if len(term) > 2]
+
+    def _vector_literal(self, embedding: list[float]) -> str:
+        if not embedding:
+            embedding = [0.0] * 64
+        return "[" + ",".join(f"{value:.8f}" for value in embedding) + "]"
 
     def _connect(self):
         from psycopg import connect

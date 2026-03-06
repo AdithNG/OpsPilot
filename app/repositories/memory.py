@@ -15,6 +15,7 @@ class StoredChunk:
     title: str
     content: str
     source_url: str | None
+    embedding: list[float]
 
 
 class MemoryDocumentRepository:
@@ -36,6 +37,7 @@ class MemoryDocumentRepository:
                         "verify health checks, and communicate status to stakeholders."
                     ),
                     source_url="https://example.com/runbook",
+                    embedding=[],
                 )
             )
 
@@ -44,23 +46,41 @@ class MemoryDocumentRepository:
             self._chunks.clear()
         self.seed_defaults()
 
-    def ingest(self, title: str, content: str, source_url: str | None = None) -> tuple[str, int]:
+    def ingest(
+        self,
+        title: str,
+        content: str,
+        source_url: str | None = None,
+        embeddings: list[list[float]] | None = None,
+    ) -> tuple[str, int]:
         document_id = f"doc-{uuid4()}"
-        chunks = [
-            StoredChunk(document_id=document_id, title=title, content=chunk, source_url=source_url)
-            for chunk in self._chunk_content(content)
-        ]
+        content_chunks = list(self._chunk_content(content))
+        if embeddings is None:
+            embeddings = [[] for _ in content_chunks]
+        chunks = []
+        for chunk, embedding in zip(content_chunks, embeddings, strict=False):
+            chunks.append(
+                StoredChunk(
+                    document_id=document_id,
+                    title=title,
+                    content=chunk,
+                    source_url=source_url,
+                    embedding=embedding,
+                )
+            )
         with self._lock:
             self._chunks.extend(chunks)
         return document_id, len(chunks)
 
-    def search(self, query: str, limit: int = 3) -> list[Citation]:
+    def search(self, query: str, limit: int = 3, query_embedding: list[float] | None = None) -> list[Citation]:
         query_terms = self._tokenize(query)
-        scored: list[tuple[int, StoredChunk]] = []
+        scored: list[tuple[float, StoredChunk]] = []
         with self._lock:
             for chunk in self._chunks:
                 haystack = f"{chunk.title} {chunk.content}"
-                score = self._score(query_terms, haystack)
+                lexical_score = self._score(query_terms, haystack)
+                vector_score = self._cosine_similarity(query_embedding, chunk.embedding)
+                score = lexical_score + vector_score
                 if score > 0:
                     scored.append((score, chunk))
         scored.sort(key=lambda item: item[0], reverse=True)
@@ -75,6 +95,11 @@ class MemoryDocumentRepository:
 
     def _score(self, query_terms: set[str], haystack: str) -> int:
         return len(query_terms & self._tokenize(haystack))
+
+    def _cosine_similarity(self, query_embedding: list[float] | None, chunk_embedding: list[float]) -> float:
+        if not query_embedding or not chunk_embedding or len(query_embedding) != len(chunk_embedding):
+            return 0.0
+        return sum(left * right for left, right in zip(query_embedding, chunk_embedding, strict=False))
 
     def _tokenize(self, text: str) -> set[str]:
         normalized = "".join(character.lower() if character.isalnum() else " " for character in text)

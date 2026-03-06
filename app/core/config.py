@@ -10,7 +10,9 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     environment: str = Field(default="development")
     openai_model: str = "gpt-4.1-mini"
+    embedding_provider: str = "local"
     embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 64
     database_url: str = "postgresql://postgres:postgres@db:5432/opspilot"
     storage_backend: str = "memory"
 
