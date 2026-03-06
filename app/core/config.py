@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     api_prefix: str = "/api/v1"
     environment: str = Field(default="development")
+    llm_provider: str = "local"
     openai_model: str = "gpt-4.1-mini"
     embedding_provider: str = "local"
     embedding_model: str = "text-embedding-3-small"

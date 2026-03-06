@@ -9,13 +9,13 @@ from app.schemas.chat import (
     ChatRequest,
     ChatResponse,
     Citation,
-    IncidentActionItem,
     IncidentSummary,
     TicketDraft,
 )
 from app.schemas.tools import ToolExecution
 from app.core.storage import storage
 from app.services.approvals import ApprovalService
+from app.services.generation import GenerationService
 from app.services.retrieval import RetrievalService
 from app.services.tools import ToolService
 
@@ -39,6 +39,7 @@ class WorkflowState(TypedDict, total=False):
 class WorkflowService:
     def __init__(self) -> None:
         self.retrieval = RetrievalService()
+        self.generation = GenerationService()
         self.approvals = ApprovalService()
         self.tools = ToolService()
         self.graph = self._build_graph()
@@ -114,13 +115,9 @@ class WorkflowService:
 
     async def _respond_question(self, state: WorkflowState) -> WorkflowState:
         citations = state.get("citations", [])
-        if citations:
-            return {
-                "response_message": f"Relevant guidance: {citations[0].snippet}",
-                "trace_steps": [*state.get("trace_steps", []), "respond_question"],
-            }
+        response_message = await self.generation.answer_question(state["message"], citations)
         return {
-            "response_message": "I can help with runbooks, incident summaries, and drafting structured follow-up actions.",
+            "response_message": response_message,
             "trace_steps": [*state.get("trace_steps", []), "respond_question"],
         }
 
@@ -130,28 +127,10 @@ class WorkflowService:
             tool_name="incident_analyzer",
             input_text=state["message"],
         )
-        summary = IncidentSummary(
-            title="Production incident follow-up",
-            impact="Customer-facing errors were detected and require verification of recovery.",
-            severity="sev2",
-            suspected_cause="A recent deploy or dependent service regression should be investigated first.",
-            next_steps=[
-                IncidentActionItem(
-                    owner="oncall-engineer",
-                    action="Confirm customer impact window and affected systems.",
-                    priority="high",
-                ),
-                IncidentActionItem(
-                    owner="service-owner",
-                    action="Validate rollback state and document root-cause evidence.",
-                    priority="high",
-                ),
-            ],
-        )
+        summary = await self.generation.summarize_incident(state["message"], state.get("citations", []))
         return {
             "response_message": (
-                "Incident summary: impact is identified, likely cause is captured, and next actions should be assigned "
-                "to an owner with a due date."
+                f"Incident summary: {summary.impact} Suspected cause: {summary.suspected_cause}"
             ),
             "incident_summary": summary,
             "trace_steps": [*state.get("trace_steps", []), "summarize_incident"],
@@ -164,27 +143,10 @@ class WorkflowService:
             tool_name="ticket_drafter",
             input_text=state["message"],
         )
-        citations = state.get("citations", [])
-        grounding = f" Relevant context: {citations[0].snippet}" if citations else ""
-        draft = TicketDraft(
-            title="Investigate production issue after deploy",
-            summary="Users are experiencing a production issue that needs triage and a concrete fix plan.",
-            impact="The issue affects normal user workflows and should be prioritized for engineering follow-up.",
-            reproduction_steps=[
-                "Identify the failing workflow or endpoint.",
-                "Compare behavior before and after the latest deploy.",
-                "Capture logs, metrics, and any error responses.",
-            ],
-            acceptance_criteria=[
-                "Root cause is identified and documented.",
-                "A fix is verified in the target environment.",
-                "Monitoring confirms the issue no longer reproduces.",
-            ],
-        )
+        draft = await self.generation.draft_ticket(state["message"], state.get("citations", []))
         return {
             "response_message": (
-                "Bug ticket draft: include title, customer impact, reproduction notes, expected behavior, "
-                f"and acceptance criteria.{grounding}"
+                f"Bug ticket draft: {draft.summary} Acceptance criteria include {draft.acceptance_criteria[0]}"
             ),
             "ticket_draft": draft,
             "trace_steps": [*state.get("trace_steps", []), "draft_ticket"],

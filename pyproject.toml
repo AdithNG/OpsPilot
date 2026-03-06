@@ -22,6 +22,9 @@ dev = [
     "httpx>=0.28.0,<1.0.0",
     "pytest>=8.3.0,<9.0.0",
 ]
+providers = [
+    "langchain-openai>=0.3.0,<1.0.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
