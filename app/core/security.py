@@ -33,7 +33,8 @@ rate_limiter = InMemoryRateLimiter()
 
 
 async def enforce_api_protection(request: Request) -> None:
-    if not request.url.path.startswith(settings.api_prefix):
+    protected_prefixes = (settings.api_prefix, settings.graphql_path)
+    if not request.url.path.startswith(protected_prefixes):
         return
     if request.url.path == f"{settings.api_prefix}/health":
         return

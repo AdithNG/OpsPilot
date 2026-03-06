@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_name: str = "OpsPilot"
     app_version: str = "0.1.0"
     api_prefix: str = "/api/v1"
+    graphql_path: str = "/api/graphql"
     environment: str = Field(default="development")
     api_key: str | None = None
     rate_limit_requests: int = 60
