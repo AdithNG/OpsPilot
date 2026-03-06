@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpsPilot Demo</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --panel: #fffaf1;
+      --ink: #1f2933;
+      --muted: #52606d;
+      --line: #d9cbb5;
+      --accent: #0f766e;
+      --accent-strong: #115e59;
+      --warn: #b45309;
+      --shadow: 0 18px 48px rgba(31, 41, 51, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.10), transparent 28%),
+        linear-gradient(180deg, #f7f2e8 0%, var(--bg) 100%);
+    }
+    main {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.3fr 0.7fr;
+      gap: 20px;
+      align-items: start;
+      margin-bottom: 24px;
+    }
+    .hero-card, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+    }
+    .hero-card {
+      padding: 28px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(2.4rem, 4vw, 4rem);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+    }
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-size: 0.8rem;
+      color: var(--accent-strong);
+      margin-bottom: 16px;
+      font-family: "Courier New", monospace;
+    }
+    .subhead, .note {
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0;
+    }
+    .hero-meta {
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+    }
+    .stat {
+      border-top: 1px solid var(--line);
+      padding-top: 14px;
+    }
+    .stat:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+    .stat-label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+      font-family: "Courier New", monospace;
+    }
+    .stat-value {
+      font-size: 1.8rem;
+      line-height: 1;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 20px;
+    }
+    .panel {
+      padding: 20px;
+    }
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 1.2rem;
+      letter-spacing: -0.03em;
+    }
+    textarea {
+      width: 100%;
+      min-height: 132px;
+      resize: vertical;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      padding: 14px;
+      font: inherit;
+      background: #fffdf8;
+      color: var(--ink);
+    }
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      cursor: pointer;
+      font: inherit;
+      background: var(--accent);
+      color: white;
+    }
+    button.secondary {
+      background: #ebe1cf;
+      color: var(--ink);
+    }
+    .presets {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 16px 0 0;
+    }
+    .preset {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--ink);
+      padding: 10px 14px;
+      font-size: 0.92rem;
+    }
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      background: #fffdf8;
+    }
+    .mono {
+      font-family: "Courier New", monospace;
+      font-size: 0.92rem;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      font-family: "Courier New", monospace;
+    }
+    .chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .chip {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #efe5d3;
+      color: var(--ink);
+      font-size: 0.84rem;
+    }
+    .warn {
+      color: var(--warn);
+    }
+    @media (max-width: 900px) {
+      .hero, .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="hero-card">
+        <div class="eyebrow">OpsPilot / Demo Console</div>
+        <h1>Show the agent,<br>not just the endpoint.</h1>
+        <p class="subhead">
+          This demo exercises the live FastAPI backend: retrieval, LangGraph routing, approvals,
+          structured outputs, conversations, traces, observability, and evals.
+        </p>
+        <div class="presets">
+          <button class="preset" data-prompt="What does the deployment runbook say about rollback?">Runbook Question</button>
+          <button class="preset" data-prompt="Summarize this incident from the outage notes">Incident Summary</button>
+          <button class="preset" data-prompt="Draft a bug ticket for login failures after deploy">Ticket Draft</button>
+          <button class="preset" data-prompt="Create a Jira ticket for this production issue.">Approval-Gated Action</button>
+        </div>
+      </div>
+      <aside class="hero-meta hero-card">
+        <div class="stat">
+          <span class="stat-label">Storage</span>
+          <span class="stat-value" id="storageBackend">-</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Conversations</span>
+          <span class="stat-value" id="conversationCount">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Traces</span>
+          <span class="stat-value" id="traceCount">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Average Eval</span>
+          <span class="stat-value" id="averageEval">0.0</span>
+        </div>
+      </aside>
+    </section>
+
+    <section class="layout">
+      <div class="stack">
+        <section class="panel">
+          <h2>Live Request</h2>
+          <textarea id="messageInput">What does the deployment runbook say about rollback?</textarea>
+          <div class="controls">
+            <button id="sendBtn">Run Request</button>
+            <button class="secondary" id="refreshBtn">Refresh Metrics</button>
+          </div>
+          <p class="note" id="statusLine">Ready.</p>
+        </section>
+
+        <section class="panel">
+          <h2>Response</h2>
+          <div class="card">
+            <pre id="responseBody">No request sent yet.</pre>
+          </div>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section class="panel">
+          <h2>Trace</h2>
+          <div class="card">
+            <pre id="traceBody">No trace yet.</pre>
+            <div class="chips" id="traceSteps"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Recent Eval Summary</h2>
+          <div class="card">
+            <pre id="evalBody">No eval data yet.</pre>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const messageInput = document.getElementById("messageInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const responseBody = document.getElementById("responseBody");
+    const traceBody = document.getElementById("traceBody");
+    const evalBody = document.getElementById("evalBody");
+    const statusLine = document.getElementById("statusLine");
+    const traceSteps = document.getElementById("traceSteps");
+    const storageBackend = document.getElementById("storageBackend");
+    const conversationCount = document.getElementById("conversationCount");
+    const traceCount = document.getElementById("traceCount");
+    const averageEval = document.getElementById("averageEval");
+
+    let currentConversationId = null;
+
+    function setStatus(text, isWarn = false) {
+      statusLine.textContent = text;
+      statusLine.className = isWarn ? "note warn" : "note";
+    }
+
+    function renderJson(element, data) {
+      element.textContent = JSON.stringify(data, null, 2);
+    }
+
+    function renderTraceSteps(steps) {
+      traceSteps.innerHTML = "";
+      for (const step of steps || []) {
+        const chip = document.createElement("span");
+        chip.className = "chip mono";
+        chip.textContent = step;
+        traceSteps.appendChild(chip);
+      }
+    }
+
+    async function refreshMetrics() {
+      const [observabilityRes, evalRes] = await Promise.all([
+        fetch("/api/v1/observability/summary"),
+        fetch("/api/v1/evals/summary")
+      ]);
+      const observability = await observabilityRes.json();
+      const evalSummary = await evalRes.json();
+      storageBackend.textContent = observability.storage_backend;
+      conversationCount.textContent = String(observability.conversation_count);
+      traceCount.textContent = String(observability.trace_count);
+      averageEval.textContent = String(evalSummary.average_score);
+      renderJson(evalBody, evalSummary);
+    }
+
+    async function runRequest() {
+      setStatus("Running request...");
+      const payload = {
+        message: messageInput.value,
+        conversation_id: currentConversationId
+      };
+      const response = await fetch("/api/v1/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        setStatus("Request failed.", true);
+        responseBody.textContent = await response.text();
+        return;
+      }
+      const data = await response.json();
+      currentConversationId = data.conversation_id;
+      renderJson(responseBody, data);
+      renderJson(traceBody, data.trace);
+      renderTraceSteps(data.trace ? data.trace.steps : []);
+      await refreshMetrics();
+      setStatus(`Conversation ${currentConversationId} updated.`);
+    }
+
+    for (const preset of document.querySelectorAll(".preset")) {
+      preset.addEventListener("click", () => {
+        messageInput.value = preset.dataset.prompt;
+      });
+    }
+
+    sendBtn.addEventListener("click", runRequest);
+    refreshBtn.addEventListener("click", refreshMetrics);
+    refreshMetrics().catch(() => setStatus("Metrics unavailable.", true));
+  </script>
+</body>
+</html>
