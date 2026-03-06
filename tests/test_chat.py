@@ -62,3 +62,20 @@ def test_chat_drafts_ticket_response() -> None:
     payload = response.json()
     assert payload["intent"] == "ticket_draft"
     assert "acceptance criteria" in payload["message"].lower()
+    assert payload["ticket_draft"]["title"]
+    assert payload["ticket_draft"]["acceptance_criteria"]
+    assert payload["incident_summary"] is None
+
+
+def test_chat_returns_structured_incident_summary() -> None:
+    response = client.post(
+        "/api/v1/chat",
+        json={"message": "Summarize this incident from the outage notes"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["intent"] == "incident_summary"
+    assert payload["incident_summary"]["severity"] == "sev2"
+    assert len(payload["incident_summary"]["next_steps"]) >= 1
+    assert payload["ticket_draft"] is None

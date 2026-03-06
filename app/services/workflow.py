@@ -4,7 +4,15 @@ from typing import Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from app.schemas.chat import ApprovalRequest, ChatRequest, ChatResponse, Citation
+from app.schemas.chat import (
+    ApprovalRequest,
+    ChatRequest,
+    ChatResponse,
+    Citation,
+    IncidentActionItem,
+    IncidentSummary,
+    TicketDraft,
+)
 from app.services.approvals import ApprovalService
 from app.services.retrieval import RetrievalService
 
@@ -18,6 +26,8 @@ class WorkflowState(TypedDict, total=False):
     response_message: str
     requires_approval: bool
     approval: ApprovalRequest | None
+    incident_summary: IncidentSummary | None
+    ticket_draft: TicketDraft | None
 
 
 class WorkflowService:
@@ -32,6 +42,8 @@ class WorkflowService:
             "citations": [],
             "requires_approval": False,
             "approval": None,
+            "incident_summary": None,
+            "ticket_draft": None,
         }
         result = await self.graph.ainvoke(initial_state)
         return ChatResponse(
@@ -40,6 +52,8 @@ class WorkflowService:
             citations=result.get("citations", []),
             requires_approval=result.get("requires_approval", False),
             approval=result.get("approval"),
+            incident_summary=result.get("incident_summary"),
+            ticket_draft=result.get("ticket_draft"),
         )
 
     def _build_graph(self):
@@ -87,21 +101,56 @@ class WorkflowService:
         }
 
     async def _summarize_incident(self, state: WorkflowState) -> WorkflowState:
+        summary = IncidentSummary(
+            title="Production incident follow-up",
+            impact="Customer-facing errors were detected and require verification of recovery.",
+            severity="sev2",
+            suspected_cause="A recent deploy or dependent service regression should be investigated first.",
+            next_steps=[
+                IncidentActionItem(
+                    owner="oncall-engineer",
+                    action="Confirm customer impact window and affected systems.",
+                    priority="high",
+                ),
+                IncidentActionItem(
+                    owner="service-owner",
+                    action="Validate rollback state and document root-cause evidence.",
+                    priority="high",
+                ),
+            ],
+        )
         return {
             "response_message": (
                 "Incident summary: impact is identified, likely cause is captured, and next actions should be assigned "
                 "to an owner with a due date."
-            )
+            ),
+            "incident_summary": summary,
         }
 
     async def _draft_ticket(self, state: WorkflowState) -> WorkflowState:
         citations = state.get("citations", [])
         grounding = f" Relevant context: {citations[0].snippet}" if citations else ""
+        draft = TicketDraft(
+            title="Investigate production issue after deploy",
+            summary="Users are experiencing a production issue that needs triage and a concrete fix plan.",
+            impact="The issue affects normal user workflows and should be prioritized for engineering follow-up.",
+            reproduction_steps=[
+                "Identify the failing workflow or endpoint.",
+                "Compare behavior before and after the latest deploy.",
+                "Capture logs, metrics, and any error responses.",
+            ],
+            acceptance_criteria=[
+                "Root cause is identified and documented.",
+                "A fix is verified in the target environment.",
+                "Monitoring confirms the issue no longer reproduces.",
+            ],
+        )
         return {
             "response_message": (
                 "Bug ticket draft: include title, customer impact, reproduction notes, expected behavior, "
                 f"and acceptance criteria.{grounding}"
-            )
+            ),
+            "ticket_draft": draft,
         }
 
     async def _gate_action(self, state: WorkflowState) -> WorkflowState:
