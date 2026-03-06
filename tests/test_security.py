@@ -39,3 +39,16 @@ def test_rate_limit_rejects_excess_requests() -> None:
     assert first.status_code == 200
     assert second.status_code == 200
     assert third.status_code == 429
+
+
+def test_cors_preflight_allows_frontend_origin_for_graphql() -> None:
+    response = client.options(
+        settings.graphql_path,
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"

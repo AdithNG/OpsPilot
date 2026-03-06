@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     api_key: str | None = None
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+    )
     llm_provider: str = "local"
     openai_model: str = "gpt-4.1-mini"
     embedding_provider: str = "local"

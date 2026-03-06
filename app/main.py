@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
 from app.api.routes import api_router
@@ -22,6 +23,14 @@ def create_app() -> FastAPI:
         version=settings.app_version,
         description="Production-style AI copilot for engineering and operations workflows.",
         lifespan=lifespan,
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
