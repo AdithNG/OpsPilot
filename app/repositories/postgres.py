@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from app.schemas.approvals import ApprovalRecord
 from app.schemas.chat import Citation, ConversationMessage, WorkflowTrace
+from app.schemas.jobs import IngestionJobRecord
 from app.schemas.tools import ToolExecution
 
 
@@ -68,8 +69,9 @@ class PostgresDocumentRepository:
         content: str,
         source_url: str | None = None,
         embeddings: list[list[float]] | None = None,
+        document_id: str | None = None,
     ) -> tuple[str, int]:
-        document_id = f"doc-{uuid4()}"
+        document_id = document_id or f"doc-{uuid4()}"
         chunks = [content[index : index + self.chunk_size] for index in range(0, len(content), self.chunk_size)] or [content]
         if embeddings is None:
             embeddings = [[] for _ in chunks]
@@ -574,6 +576,158 @@ class PostgresToolExecutionRepository:
         import json
 
         return json.dumps(metadata)
+
+    def _connect(self):
+        from psycopg import connect
+
+        return connect(self.dsn)
+
+
+class PostgresIngestionJobRepository:
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+
+    def initialize(self) -> None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS ingestion_jobs (
+                        job_id TEXT PRIMARY KEY,
+                        job_type TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        source_kind TEXT NOT NULL,
+                        document_id TEXT NULL,
+                        chunks_created INTEGER NOT NULL DEFAULT 0,
+                        error_message TEXT NULL
+                    )
+                    """
+                )
+                connection.commit()
+
+    def reset(self) -> None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("TRUNCATE TABLE ingestion_jobs")
+                connection.commit()
+
+    def create(self, job_type: str, source_kind: str, document_id: str) -> IngestionJobRecord:
+        record = IngestionJobRecord(
+            job_id=f"job-{uuid4()}",
+            job_type=job_type,
+            status="queued",
+            source_kind=source_kind,
+            document_id=document_id,
+        )
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO ingestion_jobs (job_id, job_type, status, source_kind, document_id, chunks_created, error_message)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        record.job_id,
+                        record.job_type,
+                        record.status,
+                        record.source_kind,
+                        record.document_id,
+                        record.chunks_created,
+                        record.error_message,
+                    ),
+                )
+                connection.commit()
+        return record
+
+    def get(self, job_id: str) -> IngestionJobRecord | None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT job_id, job_type, status, source_kind, document_id, chunks_created, error_message
+                    FROM ingestion_jobs
+                    WHERE job_id = %s
+                    """,
+                    (job_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                return IngestionJobRecord(
+                    job_id=row[0],
+                    job_type=row[1],
+                    status=row[2],
+                    source_kind=row[3],
+                    document_id=row[4],
+                    chunks_created=row[5],
+                    error_message=row[6],
+                )
+
+    def list(self, limit: int = 20) -> list[IngestionJobRecord]:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT job_id, job_type, status, source_kind, document_id, chunks_created, error_message
+                    FROM ingestion_jobs
+                    ORDER BY job_id DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                return [
+                    IngestionJobRecord(
+                        job_id=row[0],
+                        job_type=row[1],
+                        status=row[2],
+                        source_kind=row[3],
+                        document_id=row[4],
+                        chunks_created=row[5],
+                        error_message=row[6],
+                    )
+                    for row in cursor.fetchall()
+                ]
+
+    def update(
+        self,
+        job_id: str,
+        *,
+        status: str,
+        chunks_created: int | None = None,
+        error_message: str | None = None,
+    ) -> IngestionJobRecord | None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE ingestion_jobs
+                    SET status = %s,
+                        chunks_created = COALESCE(%s, chunks_created),
+                        error_message = %s
+                    WHERE job_id = %s
+                    RETURNING job_id, job_type, status, source_kind, document_id, chunks_created, error_message
+                    """,
+                    (status, chunks_created, error_message, job_id),
+                )
+                row = cursor.fetchone()
+                connection.commit()
+                if row is None:
+                    return None
+                return IngestionJobRecord(
+                    job_id=row[0],
+                    job_type=row[1],
+                    status=row[2],
+                    source_kind=row[3],
+                    document_id=row[4],
+                    chunks_created=row[5],
+                    error_message=row[6],
+                )
+
+    def count(self) -> int:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM ingestion_jobs")
+                return cursor.fetchone()[0]
 
     def _connect(self):
         from psycopg import connect

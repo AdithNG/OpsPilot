@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from app.schemas.approvals import ApprovalRecord
 from app.schemas.chat import Citation, ConversationMessage, WorkflowTrace
+from app.schemas.jobs import IngestionJobRecord
 from app.schemas.tools import ToolExecution
 
 
@@ -53,8 +54,9 @@ class MemoryDocumentRepository:
         content: str,
         source_url: str | None = None,
         embeddings: list[list[float]] | None = None,
+        document_id: str | None = None,
     ) -> tuple[str, int]:
-        document_id = f"doc-{uuid4()}"
+        document_id = document_id or f"doc-{uuid4()}"
         content_chunks = list(self._chunk_content(content))
         if embeddings is None:
             embeddings = [[] for _ in content_chunks]
@@ -281,3 +283,63 @@ class MemoryToolExecutionRepository:
     def count(self) -> int:
         with self._lock:
             return len(self._executions)
+
+
+class MemoryIngestionJobRepository:
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._jobs: dict[str, IngestionJobRecord] = {}
+        self._order: list[str] = []
+
+    def reset(self) -> None:
+        with self._lock:
+            self._jobs.clear()
+            self._order.clear()
+
+    def create(self, job_type: str, source_kind: str, document_id: str) -> IngestionJobRecord:
+        record = IngestionJobRecord(
+            job_id=f"job-{uuid4()}",
+            job_type=job_type,
+            status="queued",
+            source_kind=source_kind,
+            document_id=document_id,
+        )
+        with self._lock:
+            self._jobs[record.job_id] = record
+            self._order.append(record.job_id)
+        return record
+
+    def get(self, job_id: str) -> IngestionJobRecord | None:
+        with self._lock:
+            return self._jobs.get(job_id)
+
+    def list(self, limit: int = 20) -> list[IngestionJobRecord]:
+        with self._lock:
+            job_ids = list(reversed(self._order[-limit:]))
+            return [self._jobs[job_id] for job_id in job_ids]
+
+    def update(
+        self,
+        job_id: str,
+        *,
+        status: str,
+        chunks_created: int | None = None,
+        error_message: str | None = None,
+    ) -> IngestionJobRecord | None:
+        with self._lock:
+            record = self._jobs.get(job_id)
+            if record is None:
+                return None
+            updated = record.model_copy(
+                update={
+                    "status": status,
+                    "chunks_created": chunks_created if chunks_created is not None else record.chunks_created,
+                    "error_message": error_message,
+                }
+            )
+            self._jobs[job_id] = updated
+            return updated
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._jobs)

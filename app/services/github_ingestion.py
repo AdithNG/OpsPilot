@@ -99,8 +99,17 @@ class GitHubIngestionService:
         self.ingestion_service = ingestion_service or IngestionService()
 
     async def ingest(self, request: GitHubIngestRequest) -> DocumentIngestResponse:
+        artifact = self.fetch_artifact(request)
+        ingest_request = DocumentIngestRequest(
+            title=artifact.title,
+            content=artifact.content,
+            source_url=artifact.source_url,
+        )
+        return await self.ingestion_service.ingest(ingest_request)
+
+    def fetch_artifact(self, request: GitHubIngestRequest) -> GitHubArtifact:
         try:
-            artifact = self.client.fetch_artifact(request)
+            return self.client.fetch_artifact(request)
         except HTTPError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -111,10 +120,3 @@ class GitHubIngestionService:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Unable to reach GitHub for artifact ingestion.",
             ) from exc
-
-        ingest_request = DocumentIngestRequest(
-            title=artifact.title,
-            content=artifact.content,
-            source_url=artifact.source_url,
-        )
-        return await self.ingestion_service.ingest(ingest_request)
