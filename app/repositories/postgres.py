@@ -541,6 +541,46 @@ class PostgresToolExecutionRepository:
                     metadata=row[6] or {},
                 )
 
+    def update(
+        self,
+        execution_id: str,
+        *,
+        status: str,
+        output_text: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> ToolExecution | None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE tool_executions
+                    SET status = %s,
+                        output_text = COALESCE(%s, output_text),
+                        metadata = COALESCE(%s::jsonb, metadata)
+                    WHERE execution_id = %s
+                    RETURNING execution_id, conversation_id, tool_name, status, input_text, output_text, metadata
+                    """,
+                    (
+                        status,
+                        output_text,
+                        self._json_literal(metadata) if metadata is not None else None,
+                        execution_id,
+                    ),
+                )
+                row = cursor.fetchone()
+                connection.commit()
+                if row is None:
+                    return None
+                return ToolExecution(
+                    execution_id=row[0],
+                    conversation_id=row[1],
+                    tool_name=row[2],
+                    status=row[3],
+                    input_text=row[4],
+                    output_text=row[5],
+                    metadata=row[6] or {},
+                )
+
     def list(self, limit: int = 20) -> list[ToolExecution]:
         with closing(self._connect()) as connection:
             with connection.cursor() as cursor:

@@ -18,6 +18,26 @@ def test_ticket_request_creates_tool_execution() -> None:
     assert payload["tool_executions"][0]["status"] == "completed"
 
 
+def test_tool_execution_queue_endpoint_completes_in_background() -> None:
+    response = client.post(
+        "/api/v1/tools/executions",
+        json={
+            "conversation_id": "conv-manual",
+            "tool_name": "ticket_drafter",
+            "input_text": "Draft a ticket for the rollback issue",
+        },
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert payload["tool_name"] == "ticket_drafter"
+
+    get_response = client.get(f"/api/v1/tools/executions/{payload['execution_id']}")
+    assert get_response.status_code == 200
+    assert get_response.json()["status"] == "completed"
+
+
 def test_tool_execution_read_endpoints_return_recent_execution() -> None:
     chat_response = client.post(
         "/api/v1/chat",
@@ -37,3 +57,20 @@ def test_missing_tool_execution_returns_not_found() -> None:
     response = client.get("/api/v1/tools/executions/tool-missing")
 
     assert response.status_code == 404
+
+
+def test_blocked_tool_execution_stays_blocked_after_run() -> None:
+    response = client.post(
+        "/api/v1/tools/executions",
+        json={
+            "tool_name": "jira_change_request",
+            "input_text": "Create an external Jira change request for this incident",
+        },
+    )
+
+    assert response.status_code == 202
+    execution_id = response.json()["execution_id"]
+
+    get_response = client.get(f"/api/v1/tools/executions/{execution_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["status"] == "blocked"

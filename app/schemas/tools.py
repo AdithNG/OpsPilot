@@ -3,7 +3,13 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-ToolStatus = Literal["completed", "blocked"]
+ToolStatus = Literal["queued", "running", "completed", "blocked", "failed"]
+
+
+class ToolExecutionRequest(BaseModel):
+    conversation_id: str | None = None
+    tool_name: str
+    input_text: str = Field(min_length=1)
 
 
 class ToolExecution(BaseModel):

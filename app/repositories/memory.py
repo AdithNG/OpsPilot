@@ -275,6 +275,28 @@ class MemoryToolExecutionRepository:
         with self._lock:
             return self._executions.get(execution_id)
 
+    def update(
+        self,
+        execution_id: str,
+        *,
+        status: str,
+        output_text: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> ToolExecution | None:
+        with self._lock:
+            execution = self._executions.get(execution_id)
+            if execution is None:
+                return None
+            updated = execution.model_copy(
+                update={
+                    "status": status,
+                    "output_text": output_text if output_text is not None else execution.output_text,
+                    "metadata": metadata if metadata is not None else execution.metadata,
+                }
+            )
+            self._executions[execution_id] = updated
+            return updated
+
     def list(self, limit: int = 20) -> list[ToolExecution]:
         with self._lock:
             execution_ids = list(reversed(self._order[-limit:]))
