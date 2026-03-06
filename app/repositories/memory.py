@@ -148,3 +148,7 @@ class MemoryTraceRepository:
         with self._lock:
             self._traces[trace.trace_id] = trace
         return trace
+
+    def get(self, trace_id: str) -> WorkflowTrace | None:
+        with self._lock:
+            return self._traces.get(trace_id)

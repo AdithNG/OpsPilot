@@ -258,6 +258,29 @@ class PostgresTraceRepository:
                 connection.commit()
         return trace
 
+    def get(self, trace_id: str) -> WorkflowTrace | None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT conversation_id, intent, steps, requires_approval
+                    FROM workflow_traces
+                    WHERE trace_id = %s
+                    """,
+                    (trace_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                conversation_id, intent, steps, requires_approval = row
+                return WorkflowTrace(
+                    trace_id=trace_id,
+                    conversation_id=conversation_id,
+                    intent=intent,
+                    steps=steps.splitlines() if steps else [],
+                    requires_approval=requires_approval,
+                )
+
     def _connect(self):
         from psycopg import connect
 
