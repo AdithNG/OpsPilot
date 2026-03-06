@@ -3,29 +3,42 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.core.config import settings
-from app.repositories.memory import MemoryApprovalRepository, MemoryDocumentRepository
-from app.repositories.postgres import PostgresApprovalRepository, PostgresDocumentRepository
+from app.repositories.memory import (
+    MemoryApprovalRepository,
+    MemoryConversationRepository,
+    MemoryDocumentRepository,
+    MemoryTraceRepository,
+)
+from app.repositories.postgres import (
+    PostgresApprovalRepository,
+    PostgresConversationRepository,
+    PostgresDocumentRepository,
+    PostgresTraceRepository,
+)
 
 
 @dataclass(slots=True)
 class StorageContainer:
     documents: MemoryDocumentRepository | PostgresDocumentRepository
     approvals: MemoryApprovalRepository | PostgresApprovalRepository
+    conversations: MemoryConversationRepository | PostgresConversationRepository
+    traces: MemoryTraceRepository | PostgresTraceRepository
     backend: str
 
     def initialize(self) -> None:
-        initialize = getattr(self.documents, "initialize", None)
-        if callable(initialize):
-            initialize()
-        else:
-            self.documents.seed_defaults()
-        approval_initialize = getattr(self.approvals, "initialize", None)
-        if callable(approval_initialize):
-            approval_initialize()
+        for repository in (self.documents, self.approvals, self.conversations, self.traces):
+            initialize = getattr(repository, "initialize", None)
+            if callable(initialize):
+                initialize()
+        seed_defaults = getattr(self.documents, "seed_defaults", None)
+        if callable(seed_defaults):
+            seed_defaults()
 
     def reset(self) -> None:
         self.documents.reset()
         self.approvals.reset()
+        self.conversations.reset()
+        self.traces.reset()
 
 
 def create_storage_container() -> StorageContainer:
@@ -33,11 +46,15 @@ def create_storage_container() -> StorageContainer:
         return StorageContainer(
             documents=PostgresDocumentRepository(settings.database_url),
             approvals=PostgresApprovalRepository(settings.database_url),
+            conversations=PostgresConversationRepository(settings.database_url),
+            traces=PostgresTraceRepository(settings.database_url),
             backend="postgres",
         )
     return StorageContainer(
         documents=MemoryDocumentRepository(),
         approvals=MemoryApprovalRepository(),
+        conversations=MemoryConversationRepository(),
+        traces=MemoryTraceRepository(),
         backend="memory",
     )
 

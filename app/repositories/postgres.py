@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import closing
 from uuid import uuid4
 
-from app.schemas.chat import Citation
+from app.schemas.chat import Citation, ConversationMessage, WorkflowTrace
 
 
 class PostgresDocumentRepository:
@@ -139,6 +139,124 @@ class PostgresApprovalRepository:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1 FROM approvals WHERE request_id = %s", (request_id,))
                 return cursor.fetchone() is not None
+
+    def _connect(self):
+        from psycopg import connect
+
+        return connect(self.dsn)
+
+
+class PostgresConversationRepository:
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+
+    def initialize(self) -> None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS conversations (
+                        conversation_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                    """
+                )
+                connection.commit()
+
+    def reset(self) -> None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("TRUNCATE TABLE conversations")
+                connection.commit()
+
+    def ensure(self, conversation_id: str | None = None) -> str:
+        return conversation_id or f"conv-{uuid4()}"
+
+    def append(self, conversation_id: str, role: str, content: str) -> None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO conversations (conversation_id, role, content)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (conversation_id, role, content),
+                )
+                connection.commit()
+
+    def get_messages(self, conversation_id: str) -> list[ConversationMessage]:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT role, content
+                    FROM conversations
+                    WHERE conversation_id = %s
+                    ORDER BY created_at ASC
+                    """,
+                    (conversation_id,),
+                )
+                return [ConversationMessage(role=role, content=content) for role, content in cursor.fetchall()]
+
+    def _connect(self):
+        from psycopg import connect
+
+        return connect(self.dsn)
+
+
+class PostgresTraceRepository:
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+
+    def initialize(self) -> None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS workflow_traces (
+                        trace_id TEXT PRIMARY KEY,
+                        conversation_id TEXT NOT NULL,
+                        intent TEXT NOT NULL,
+                        steps TEXT NOT NULL,
+                        requires_approval BOOLEAN NOT NULL
+                    )
+                    """
+                )
+                connection.commit()
+
+    def reset(self) -> None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("TRUNCATE TABLE workflow_traces")
+                connection.commit()
+
+    def create(
+        self,
+        conversation_id: str,
+        intent: str,
+        steps: list[str],
+        requires_approval: bool,
+    ) -> WorkflowTrace:
+        trace = WorkflowTrace(
+            trace_id=f"trace-{uuid4()}",
+            conversation_id=conversation_id,
+            intent=intent,
+            steps=steps,
+            requires_approval=requires_approval,
+        )
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO workflow_traces (trace_id, conversation_id, intent, steps, requires_approval)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (trace.trace_id, trace.conversation_id, trace.intent, "\n".join(trace.steps), trace.requires_approval),
+                )
+                connection.commit()
+        return trace
 
     def _connect(self):
         from psycopg import connect

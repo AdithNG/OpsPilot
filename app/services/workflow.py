@@ -13,6 +13,7 @@ from app.schemas.chat import (
     IncidentSummary,
     TicketDraft,
 )
+from app.core.storage import storage
 from app.services.approvals import ApprovalService
 from app.services.retrieval import RetrievalService
 
@@ -20,6 +21,7 @@ Intent = Literal["question", "incident_summary", "ticket_draft", "action_request
 
 
 class WorkflowState(TypedDict, total=False):
+    conversation_id: str
     message: str
     intent: Intent
     citations: list[Citation]
@@ -28,6 +30,7 @@ class WorkflowState(TypedDict, total=False):
     approval: ApprovalRequest | None
     incident_summary: IncidentSummary | None
     ticket_draft: TicketDraft | None
+    trace_steps: list[str]
 
 
 class WorkflowService:
@@ -37,16 +40,28 @@ class WorkflowService:
         self.graph = self._build_graph()
 
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
+        conversation_id = storage.conversations.ensure(request.conversation_id)
+        storage.conversations.append(conversation_id, "user", request.message)
         initial_state: WorkflowState = {
+            "conversation_id": conversation_id,
             "message": request.message,
             "citations": [],
             "requires_approval": False,
             "approval": None,
             "incident_summary": None,
             "ticket_draft": None,
+            "trace_steps": [],
         }
         result = await self.graph.ainvoke(initial_state)
+        trace = storage.traces.create(
+            conversation_id=conversation_id,
+            intent=result["intent"],
+            steps=result.get("trace_steps", []),
+            requires_approval=result.get("requires_approval", False),
+        )
+        storage.conversations.append(conversation_id, "assistant", result["response_message"])
         return ChatResponse(
+            conversation_id=conversation_id,
             message=result["response_message"],
             intent=result["intent"],
             citations=result.get("citations", []),
@@ -54,6 +69,7 @@ class WorkflowService:
             approval=result.get("approval"),
             incident_summary=result.get("incident_summary"),
             ticket_draft=result.get("ticket_draft"),
+            trace=trace,
         )
 
     def _build_graph(self):
@@ -84,20 +100,22 @@ class WorkflowService:
         return graph.compile()
 
     async def _classify_request(self, state: WorkflowState) -> WorkflowState:
-        return {"intent": self._classify(state["message"])}
+        return {"intent": self._classify(state["message"]), "trace_steps": [*state.get("trace_steps", []), "classify"]}
 
     async def _retrieve_context(self, state: WorkflowState) -> WorkflowState:
         citations = await self.retrieval.retrieve(state["message"])
-        return {"citations": citations}
+        return {"citations": citations, "trace_steps": [*state.get("trace_steps", []), "retrieve"]}
 
     async def _respond_question(self, state: WorkflowState) -> WorkflowState:
         citations = state.get("citations", [])
         if citations:
             return {
                 "response_message": f"Relevant guidance: {citations[0].snippet}",
+                "trace_steps": [*state.get("trace_steps", []), "respond_question"],
             }
         return {
             "response_message": "I can help with runbooks, incident summaries, and drafting structured follow-up actions.",
+            "trace_steps": [*state.get("trace_steps", []), "respond_question"],
         }
 
     async def _summarize_incident(self, state: WorkflowState) -> WorkflowState:
@@ -125,6 +143,7 @@ class WorkflowService:
                 "to an owner with a due date."
             ),
             "incident_summary": summary,
+            "trace_steps": [*state.get("trace_steps", []), "summarize_incident"],
         }
 
     async def _draft_ticket(self, state: WorkflowState) -> WorkflowState:
@@ -151,6 +170,7 @@ class WorkflowService:
                 f"and acceptance criteria.{grounding}"
             ),
             "ticket_draft": draft,
+            "trace_steps": [*state.get("trace_steps", []), "draft_ticket"],
         }
 
     async def _gate_action(self, state: WorkflowState) -> WorkflowState:
@@ -164,6 +184,7 @@ class WorkflowService:
                 action=action,
                 reason="Requested action could change external system state.",
             ),
+            "trace_steps": [*state.get("trace_steps", []), "gate_action"],
         }
 
     def _route_by_intent(self, state: WorkflowState) -> Intent:

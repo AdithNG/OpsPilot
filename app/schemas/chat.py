@@ -19,6 +19,19 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
 
 
+class ConversationMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class WorkflowTrace(BaseModel):
+    trace_id: str
+    conversation_id: str
+    intent: Literal["question", "incident_summary", "ticket_draft", "action_request"]
+    steps: list[str] = Field(default_factory=list)
+    requires_approval: bool = False
+
+
 class IncidentActionItem(BaseModel):
     owner: str
     action: str
@@ -42,6 +55,7 @@ class TicketDraft(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    conversation_id: str
     message: str
     intent: Literal["question", "incident_summary", "ticket_draft", "action_request"]
     citations: list[Citation] = Field(default_factory=list)
@@ -49,3 +63,4 @@ class ChatResponse(BaseModel):
     approval: ApprovalRequest | None = None
     incident_summary: IncidentSummary | None = None
     ticket_draft: TicketDraft | None = None
+    trace: WorkflowTrace | None = None
