@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.tools import ToolExecution
+
 
 class Citation(BaseModel):
     source_id: str
@@ -64,3 +66,4 @@ class ChatResponse(BaseModel):
     incident_summary: IncidentSummary | None = None
     ticket_draft: TicketDraft | None = None
     trace: WorkflowTrace | None = None
+    tool_executions: list[ToolExecution] = Field(default_factory=list)

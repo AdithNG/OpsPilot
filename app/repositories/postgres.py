@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from app.schemas.approvals import ApprovalRecord
 from app.schemas.chat import Citation, ConversationMessage, WorkflowTrace
+from app.schemas.tools import ToolExecution
 
 
 class PostgresDocumentRepository:
@@ -441,6 +442,138 @@ class PostgresTraceRepository:
                     )
                     for trace_id, conversation_id, intent, steps, requires_approval in rows
                 ]
+
+    def _connect(self):
+        from psycopg import connect
+
+        return connect(self.dsn)
+
+
+class PostgresToolExecutionRepository:
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+
+    def initialize(self) -> None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS tool_executions (
+                        execution_id TEXT PRIMARY KEY,
+                        conversation_id TEXT NOT NULL,
+                        tool_name TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        input_text TEXT NOT NULL,
+                        output_text TEXT NOT NULL,
+                        metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+                    )
+                    """
+                )
+                connection.commit()
+
+    def reset(self) -> None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("TRUNCATE TABLE tool_executions")
+                connection.commit()
+
+    def create(
+        self,
+        conversation_id: str,
+        tool_name: str,
+        status: str,
+        input_text: str,
+        output_text: str,
+        metadata: dict[str, str] | None = None,
+    ) -> ToolExecution:
+        execution = ToolExecution(
+            execution_id=f"tool-{uuid4()}",
+            conversation_id=conversation_id,
+            tool_name=tool_name,
+            status=status,
+            input_text=input_text,
+            output_text=output_text,
+            metadata=metadata or {},
+        )
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO tool_executions (execution_id, conversation_id, tool_name, status, input_text, output_text, metadata)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                    """,
+                    (
+                        execution.execution_id,
+                        execution.conversation_id,
+                        execution.tool_name,
+                        execution.status,
+                        execution.input_text,
+                        execution.output_text,
+                        self._json_literal(execution.metadata),
+                    ),
+                )
+                connection.commit()
+        return execution
+
+    def get(self, execution_id: str) -> ToolExecution | None:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT execution_id, conversation_id, tool_name, status, input_text, output_text, metadata
+                    FROM tool_executions
+                    WHERE execution_id = %s
+                    """,
+                    (execution_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                return ToolExecution(
+                    execution_id=row[0],
+                    conversation_id=row[1],
+                    tool_name=row[2],
+                    status=row[3],
+                    input_text=row[4],
+                    output_text=row[5],
+                    metadata=row[6] or {},
+                )
+
+    def list(self, limit: int = 20) -> list[ToolExecution]:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT execution_id, conversation_id, tool_name, status, input_text, output_text, metadata
+                    FROM tool_executions
+                    ORDER BY execution_id DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                return [
+                    ToolExecution(
+                        execution_id=row[0],
+                        conversation_id=row[1],
+                        tool_name=row[2],
+                        status=row[3],
+                        input_text=row[4],
+                        output_text=row[5],
+                        metadata=row[6] or {},
+                    )
+                    for row in cursor.fetchall()
+                ]
+
+    def count(self) -> int:
+        with closing(self._connect()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM tool_executions")
+                return cursor.fetchone()[0]
+
+    def _json_literal(self, metadata: dict[str, str]) -> str:
+        import json
+
+        return json.dumps(metadata)
 
     def _connect(self):
         from psycopg import connect

@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from app.schemas.approvals import ApprovalRecord
 from app.schemas.chat import Citation, ConversationMessage, WorkflowTrace
+from app.schemas.tools import ToolExecution
 
 
 @dataclass(slots=True)
@@ -232,3 +233,51 @@ class MemoryTraceRepository:
         with self._lock:
             trace_ids = list(reversed(self._order[-limit:]))
             return [self._traces[trace_id] for trace_id in trace_ids]
+
+
+class MemoryToolExecutionRepository:
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._executions: dict[str, ToolExecution] = {}
+        self._order: list[str] = []
+
+    def reset(self) -> None:
+        with self._lock:
+            self._executions.clear()
+            self._order.clear()
+
+    def create(
+        self,
+        conversation_id: str,
+        tool_name: str,
+        status: str,
+        input_text: str,
+        output_text: str,
+        metadata: dict[str, str] | None = None,
+    ) -> ToolExecution:
+        execution = ToolExecution(
+            execution_id=f"tool-{uuid4()}",
+            conversation_id=conversation_id,
+            tool_name=tool_name,
+            status=status,
+            input_text=input_text,
+            output_text=output_text,
+            metadata=metadata or {},
+        )
+        with self._lock:
+            self._executions[execution.execution_id] = execution
+            self._order.append(execution.execution_id)
+        return execution
+
+    def get(self, execution_id: str) -> ToolExecution | None:
+        with self._lock:
+            return self._executions.get(execution_id)
+
+    def list(self, limit: int = 20) -> list[ToolExecution]:
+        with self._lock:
+            execution_ids = list(reversed(self._order[-limit:]))
+            return [self._executions[execution_id] for execution_id in execution_ids]
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._executions)

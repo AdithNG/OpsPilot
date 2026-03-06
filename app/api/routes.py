@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import approvals, chat, conversations, documents, evals, health, observability, traces
+from app.api.v1.endpoints import approvals, chat, conversations, documents, evals, health, observability, tools, traces
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -11,3 +11,4 @@ api_router.include_router(conversations.router, prefix="/conversations", tags=["
 api_router.include_router(traces.router, prefix="/traces", tags=["traces"])
 api_router.include_router(observability.router, prefix="/observability", tags=["observability"])
 api_router.include_router(evals.router, prefix="/evals", tags=["evals"])
+api_router.include_router(tools.router, prefix="/tools", tags=["tools"])

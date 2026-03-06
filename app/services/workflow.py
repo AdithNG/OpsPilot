@@ -13,9 +13,11 @@ from app.schemas.chat import (
     IncidentSummary,
     TicketDraft,
 )
+from app.schemas.tools import ToolExecution
 from app.core.storage import storage
 from app.services.approvals import ApprovalService
 from app.services.retrieval import RetrievalService
+from app.services.tools import ToolService
 
 Intent = Literal["question", "incident_summary", "ticket_draft", "action_request"]
 
@@ -31,12 +33,14 @@ class WorkflowState(TypedDict, total=False):
     incident_summary: IncidentSummary | None
     ticket_draft: TicketDraft | None
     trace_steps: list[str]
+    tool_executions: list[ToolExecution]
 
 
 class WorkflowService:
     def __init__(self) -> None:
         self.retrieval = RetrievalService()
         self.approvals = ApprovalService()
+        self.tools = ToolService()
         self.graph = self._build_graph()
 
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
@@ -51,6 +55,7 @@ class WorkflowService:
             "incident_summary": None,
             "ticket_draft": None,
             "trace_steps": [],
+            "tool_executions": [],
         }
         result = await self.graph.ainvoke(initial_state)
         trace = storage.traces.create(
@@ -70,6 +75,7 @@ class WorkflowService:
             incident_summary=result.get("incident_summary"),
             ticket_draft=result.get("ticket_draft"),
             trace=trace,
+            tool_executions=result.get("tool_executions", []),
         )
 
     def _build_graph(self):
@@ -119,6 +125,11 @@ class WorkflowService:
         }
 
     async def _summarize_incident(self, state: WorkflowState) -> WorkflowState:
+        tool_execution = self.tools.execute(
+            conversation_id=state["conversation_id"],
+            tool_name="incident_analyzer",
+            input_text=state["message"],
+        )
         summary = IncidentSummary(
             title="Production incident follow-up",
             impact="Customer-facing errors were detected and require verification of recovery.",
@@ -144,9 +155,15 @@ class WorkflowService:
             ),
             "incident_summary": summary,
             "trace_steps": [*state.get("trace_steps", []), "summarize_incident"],
+            "tool_executions": [*state.get("tool_executions", []), tool_execution],
         }
 
     async def _draft_ticket(self, state: WorkflowState) -> WorkflowState:
+        tool_execution = self.tools.execute(
+            conversation_id=state["conversation_id"],
+            tool_name="ticket_drafter",
+            input_text=state["message"],
+        )
         citations = state.get("citations", [])
         grounding = f" Relevant context: {citations[0].snippet}" if citations else ""
         draft = TicketDraft(
@@ -171,9 +188,15 @@ class WorkflowService:
             ),
             "ticket_draft": draft,
             "trace_steps": [*state.get("trace_steps", []), "draft_ticket"],
+            "tool_executions": [*state.get("tool_executions", []), tool_execution],
         }
 
     async def _gate_action(self, state: WorkflowState) -> WorkflowState:
+        tool_execution = self.tools.execute(
+            conversation_id=state["conversation_id"],
+            tool_name="jira_change_request",
+            input_text=state["message"],
+        )
         action = "Create or modify an external system record"
         request_id = await self.approvals.create(action)
         return {
@@ -185,6 +208,7 @@ class WorkflowService:
                 reason="Requested action could change external system state.",
             ),
             "trace_steps": [*state.get("trace_steps", []), "gate_action"],
+            "tool_executions": [*state.get("tool_executions", []), tool_execution],
         }
 
     def _route_by_intent(self, state: WorkflowState) -> Intent:
