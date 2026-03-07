@@ -402,8 +402,11 @@ export default function HomePage() {
                     <div className="ops-stack">
                       <div className="ops-subtitle">Citations</div>
                       {chatResult.citations.length ? (
-                        chatResult.citations.map((citation) => (
-                          <div key={`${citation.sourceId}-${citation.title ?? "source"}`} className="ops-subcard">
+                        chatResult.citations.map((citation, index) => (
+                          <div
+                            key={`${citation.sourceId}-${citation.title ?? "source"}-${index}`}
+                            className="ops-subcard"
+                          >
                             <div className="ops-subcard__title">
                               {citation.title ?? citation.sourceId}
                               {citation.score !== null ? (
