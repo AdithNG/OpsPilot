@@ -223,9 +223,18 @@ export default function HomePage() {
                 type="button"
                 onClick={() => setActiveView(item.key)}
                 className={`ops-nav__item ${activeView === item.key ? "is-active" : ""}`}
+                aria-pressed={activeView === item.key}
               >
-                <span className="ops-nav__label">{item.label}</span>
-                <span className="ops-nav__desc">{item.description}</span>
+                <span className="ops-nav__content">
+                  <span className="ops-nav__labelrow">
+                    <span className="ops-nav__label">{item.label}</span>
+                    <span className="ops-nav__action">{activeView === item.key ? "Viewing" : "Open"}</span>
+                  </span>
+                  <span className="ops-nav__desc">{item.description}</span>
+                </span>
+                <span className="ops-nav__chevron" aria-hidden="true">
+                  {activeView === item.key ? "•" : "→"}
+                </span>
               </button>
             ))}
           </nav>
