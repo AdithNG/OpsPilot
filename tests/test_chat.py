@@ -72,6 +72,28 @@ def test_chat_reranks_more_relevant_document_first() -> None:
     assert payload["citations"][0]["score"] >= payload["citations"][-1]["score"]
 
 
+def test_chat_prefers_runbook_over_github_readme_for_ops_question() -> None:
+    client.post(
+        "/api/v1/documents/ingest",
+        json={
+            "title": "openai-cookbook/README.md@main",
+            "content": "This README explains examples and SDK usage. It can be applied in any language.",
+            "source_url": "https://github.com/openai/openai-cookbook/blob/main/README.md",
+        },
+    )
+
+    response = client.post(
+        "/api/v1/chat",
+        json={"message": "What does the deployment runbook say about rollback?"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["citations"]
+    assert payload["citations"][0]["title"] == "Deployment Rollback Runbook"
+    assert "runbook" in payload["message"].lower()
+
+
 def test_chat_requires_approval_for_write_like_actions() -> None:
     response = client.post(
         "/api/v1/chat",
